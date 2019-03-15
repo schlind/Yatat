@@ -18,7 +18,7 @@ Browsing and decision progress is stored in:
 + */path/to/unpacked/archive/yatat.kill*
 
 ### Online destruction:
-+ Run Yata with [Twitter API credentials](https://developer.twitter.com): 
++ Run Yatat with [Twitter API credentials](https://developer.twitter.com): 
 *(auth.yaml is created on-the-fly and you will be asked for credentials)*
 ```bash
 python3 yatat.py /path/to/unpacked/archive /path/to/auth.yaml
