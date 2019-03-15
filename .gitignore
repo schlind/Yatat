@@ -1,0 +1,17 @@
+build/
+dist/
+htmlcov/
+workdir/
+__pycache__/
+
+.coverage
+.eggs/
+.idea/
+.pytest_cache
+
+*.DS_Store
+*.egg-info/
+*.egg
+*.py[cod]
+*.so
+*~
