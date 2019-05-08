@@ -100,7 +100,8 @@ class ArchiveTestCase(TestCase):
     def setUp(self):
         self.work_dir = tempfile.gettempdir()
         self.keep_file = '{}/yatat.keep'.format(self.work_dir)
-        self.kill_file = '{}/yatat.kill'.format(self.work_dir)
+        self.kill_file = '{}/yatat.destroy'.format(self.work_dir)
+        self.kill2_file = '{}/yatat.destroyed'.format(self.work_dir)
         self.tweets_csv = '{}/tweets.csv'.format(self.work_dir)
         with open(self.tweets_csv, 'w') as f:
             for csv_tweet in self.csv_tweets:
@@ -113,6 +114,8 @@ class ArchiveTestCase(TestCase):
             os.remove(self.keep_file)
         if os.path.exists(self.kill_file):
             os.remove(self.kill_file)
+        if os.path.exists(self.kill2_file):
+            os.remove(self.kill2_file)
 
 
 class ArchiveTest(ArchiveTestCase):
@@ -253,11 +256,11 @@ class UserInterfaceTest(ArchiveTestCase):
             UserInterface(['', self.work_dir])
         console = str(out.getvalue().strip())
         self.assertTrue(console.endswith('Cheers!'))
-        self.assertTrue('total ...: 6' in console)
-        self.assertTrue('todo ....: 6' in console)
-        self.assertTrue('done ....: 0' in console)
-        self.assertTrue('kept ....: 0' in console)
-        self.assertTrue('kill ....: 0' in console)
+        self.assertTrue('in archive .: 6' in console)
+        self.assertTrue('unread .....: 6' in console)
+        self.assertTrue('read .......: 0' in console)
+        self.assertTrue('keeping ....: 0' in console)
+        self.assertTrue('to destroy .: 0' in console)
         self.assertTrue('Quit.' in console)
 
     @patch('karlsruher.tweepyx.API', mock.Mock())
@@ -307,7 +310,7 @@ class UserInterfaceTest(ArchiveTestCase):
         'username',
         'A','Y','Y','Y','Y','ENTER','Q','Q'
     ]))
-    def test_all_all_filters_quit(self):
+    def test_all_filters_quit(self):
         """Browse archive, all filters"""
         with managed_io() as (out):
             UserInterface(['', self.work_dir])
@@ -337,17 +340,17 @@ class UserInterfaceTest(ArchiveTestCase):
             UserInterface(['', self.work_dir])
         console = str(out.getvalue().strip())
         self.assertTrue(console.endswith('Cheers!'))
-        self.assertTrue('total ...: 6' in console)
-        self.assertTrue('todo ....: 6' in console)
-        self.assertTrue('todo ....: 5' in console)
-        self.assertTrue('todo ....: 4' in console)
-        self.assertTrue('todo ....: 3' in console)
-        self.assertTrue('done ....: 0' in console)
-        self.assertTrue('done ....: 1' in console)
-        self.assertTrue('done ....: 2' in console)
-        self.assertTrue('done ....: 3' in console)
-        self.assertTrue('kept ....: 1' in console)
-        self.assertTrue('kill ....: 2' in console)
+        self.assertTrue('in archive .: 6' in console)
+        self.assertTrue('unread .....: 6' in console)
+        self.assertTrue('unread .....: 5' in console)
+        self.assertTrue('unread .....: 4' in console)
+        self.assertTrue('unread .....: 3' in console)
+        self.assertTrue('read .......: 0' in console)
+        self.assertTrue('read .......: 1' in console)
+        self.assertTrue('read .......: 2' in console)
+        self.assertTrue('read .......: 3' in console)
+        self.assertTrue('keeping ....: 1' in console)
+        self.assertTrue('to destroy .: 2' in console)
         self.assertTrue('Having 6 tweets' in console)
         self.assertTrue('Still 3 tweets' in console)
 
@@ -362,10 +365,10 @@ class UserInterfaceTest(ArchiveTestCase):
             UserInterface(['', self.work_dir])
         console = str(out.getvalue().strip())
         self.assertTrue(console.endswith('Cheers!'))
-        self.assertTrue('todo ....: 0' in console)
-        self.assertTrue('done ....: 6' in console)
-        self.assertTrue('kept ....: 6' in console)
-        self.assertTrue('kill ....: 0' in console)
+        self.assertTrue('unread .....: 0' in console)
+        self.assertTrue('read .......: 6' in console)
+        self.assertTrue('keeping ....: 6' in console)
+        self.assertTrue('to destroy .: 0' in console)
 
     @patch('builtins.input', mock.Mock(side_effect=[
         'username',
@@ -378,10 +381,10 @@ class UserInterfaceTest(ArchiveTestCase):
             UserInterface(['', self.work_dir])
         console = str(out.getvalue().strip())
         self.assertTrue(console.endswith('Cheers!'))
-        self.assertTrue('todo ....: 0' in console)
-        self.assertTrue('done ....: 6' in console)
-        self.assertTrue('kept ....: 0' in console)
-        self.assertTrue('kill ....: 1' in console)
+        self.assertTrue('unread .....: 0' in console)
+        self.assertTrue('read .......: 6' in console)
+        self.assertTrue('keeping ....: 0' in console)
+        self.assertTrue('to destroy .: 1' in console)
 
     @patch('builtins.input', mock.Mock(side_effect=[
         'username',
@@ -428,17 +431,21 @@ class UserInterfaceTest(ArchiveTestCase):
         'username',
         'A','N','N','N','N','ENTER',
         'C','X','X','','Q',
-        'X','Q'
+        'X','ENTER','Q'
     ]))
+    @patch('yatat.UserInterface.api', mock.Mock())
     def test_destroy(self):
         """Destroy tweets"""
         with managed_io() as (out):
-            UserInterface(['', self.work_dir])
+            ui = UserInterface(['', self.work_dir])
         console = str(out.getvalue().strip())
         self.assertTrue(console.endswith('Cheers!'))
-        self.assertTrue('2 tweets marked to DELETE' in console)
-        self.assertTrue('DELETE 2525-03-04 555' in console)
-        self.assertTrue('DELETE 2525-02-03 444' in console)
+        self.assertTrue('2 tweets marked to DESTROY' in console)
+        self.assertTrue('DESTROYING' in console)
+        self.assertTrue('2525-03-04 555' in console)
+        self.assertTrue('2525-02-03 444' in console)
+        self.assertTrue('to destroy .: 0' in console)
+        self.assertTrue('destroyed ..: 2' in console)
 
     @patch('builtins.input', mock.Mock(side_effect=[
         'username',
@@ -446,19 +453,18 @@ class UserInterfaceTest(ArchiveTestCase):
         'C','X','X','','Q',
         'A','N','N','N','N','ENTER',
         'C','','X','','Q',
-        'X','Q'
+        'X','ENTER','Q'
     ]))
+    @patch('yatat.UserInterface.api', mock.Mock())
     def test_destroy_safe(self):
         """Don't destroy kept tweets"""
         with managed_io() as (out):
-            ui = UserInterface(['', self.work_dir])
-        try:
-            ui.api = mock.Mock()
-
-            console = str(out.getvalue().strip())
-            self.assertTrue(console.endswith('Cheers!'))
-            self.assertTrue('2 tweets marked to DELETE' in console)
-            self.assertFalse('DELETE 2525-03-04 555' in console)
-            self.assertTrue('DELETE 2525-02-03 444' in console)
-        finally:
-            ui.api = None
+            UserInterface(['', self.work_dir])
+        console = str(out.getvalue().strip())
+        self.assertTrue(console.endswith('Cheers!'))
+        self.assertTrue('2 tweets marked to DESTROY' in console)
+        self.assertTrue('DESTROYING' in console)
+        self.assertFalse('2525-03-04 555' in console)
+        self.assertTrue('2525-02-03 444' in console)
+        self.assertTrue('to destroy .: 1' in console)
+        self.assertTrue('destroyed ..: 1' in console)
