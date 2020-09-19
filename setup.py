@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 import yatat
 
@@ -31,6 +31,9 @@ setup(
     py_modules=['yatat', 'yatat_test'],
     python_requires='>=3.7, <4',
     install_requires=['karlsruher>=2.0b16'],
+    extras_require={
+        'test': ['pytest', 'pytest-cov', 'pylint'],
+    },
     entry_points={
         'console_scripts': ['yatat=yatat:main']
     },

@@ -2,120 +2,65 @@
 # \ \ / /_ _| |_ __ _| |_
 #  \ V / _` | __/ _` | __|
 #   | | (_| | || (_| | |_
-#   |_|\__,_|\__\__,_|\__|
-"""
-Yatat - Yet another twitter archive tool
+#   |_|\__,_|\__\__,_|\__| Yet another twitter archive tool
+"""See README.md for details"""
 
-Simple commandline application to let you decide
-about tweets while browsing the Twitter archive.
-Decisions to make: keep or delete, decide later.
-"""
-
+import json
 import os
 import sys
-import time
-from csv import DictReader
+from datetime import datetime
+from time import sleep
+
+# Promotion for https://twitter.com/Karlsruher
 from karlsruher import tweepyx
 
-__version__ = '1.0b0'
+__version__ = '1.0b1'
 __license__ = "Public Domain"
 __author__ = 'Sascha Schlindwein'
 
 
-class Tweet:
-    """
-    It's all about tweets!
-    """
-
-    # pylint: disable=too-many-instance-attributes
-    def __init__(self, csv):
-        """
-        Tweets are materialized from your archive file "tweets.csv".
-        :param csv: The csv representation of a tweet
-        """
-        self.tweet_id = int(csv["tweet_id"])
-        self.timestamp = str(csv["timestamp"])
-        self.source = str(csv["source"])
-        self.text = str(csv["text"])
-        self.expanded_urls = str(csv["expanded_urls"])
-        if csv["in_reply_to_status_id"]:
-            self.in_reply_to_status_id = int(csv["in_reply_to_status_id"])
-        else:
-            self.in_reply_to_status_id = None
-        if csv["in_reply_to_user_id"]:
-            self.in_reply_to_user_id = int(csv["in_reply_to_user_id"])
-        else:
-            self.in_reply_to_user_id = None
-        if csv["retweeted_status_id"]:
-            self.retweeted_status_id = int(csv["retweeted_status_id"])
-        else:
-            self.retweeted_status_id = None
-        if csv["retweeted_status_user_id"]:
-            self.retweeted_status_user_id = int(csv["retweeted_status_user_id"])
-        else:
-            self.retweeted_status_user_id = None
-        if csv["retweeted_status_timestamp"]:
-            self.retweeted_status_timestamp = str(csv["retweeted_status_timestamp"])
-        else:
-            self.retweeted_status_timestamp = None
-
-    def __repr__(self):
-        return '{0} {1}|{2}'.format(self.timestamp[:10], self.tweet_id, self.text)
-
-    def is_reply(self):
-        """
-        Tweets with "in_reply_to_status_id" are replies.
-        """
-        return self.in_reply_to_status_id is not None
-
-    def is_retweet(self):
-        """
-        Tweets with "retweeted_status_id" are retweets.
-        """
-        return self.retweeted_status_id is not None
-
-    def is_tweet(self):
-        """
-        Tweets without "in_reply_to_status_id" and "retweeted_status_id".
-        """
-        return not self.is_reply() and not self.is_retweet()
-
-
 class Archive:
-    """
-    Represent the tweet archive
-    """
+    """The Archive loads and provides tweets from the Twitter archive data."""
 
-    def __init__(self, archive_dir):
+    def __init__(self, working_dir):
         """
-        Map tweets from "tweets.csv" to a list of Tweet instances.
+        Load tweets from 'tweet.js' in the working directory.
 
-        :param archive_dir: The working directory with "tweets.csv"
+        => Remember to remove the part "window.YTD.tweet.part0 = " from the
+        first line!
+
+        :param working_dir: The working directory that contains 'tweet.js' and
+        will be populated with other files
         """
-        if not os.path.isdir(archive_dir):
-            raise Oops('Directory {0} does not exist.'.format(archive_dir))
+        if not os.path.isdir(working_dir):
+            raise Oops('Working Directory "{0}" does not exist.'.format(working_dir))
+
+        path_to_archive = '{0}/{1}'.format(working_dir, 'tweet.js')
+
+        if not os.path.isfile(path_to_archive):
+            raise Oops('File "{0}" does not exist.'.format(path_to_archive))
+
         self.tweets = []
-        with open('{0}/tweets.csv'.format(archive_dir), 'r') as file:
-            for csv_tweet in DictReader(file):
-                self.tweets.append(Tweet(csv_tweet))
+
+        with open(path_to_archive) as archive_data_file:
+            for json_obj in json.load(archive_data_file):
+                self.tweets.append(Tweet(json_obj['tweet']))
+
+        print('Loaded', len(self.tweets), 'tweets from', path_to_archive)
 
     def find(self, tweet_id):
         """
-        Brute find the given tweet in the archive.
-
         :param tweet_id: The ID of the tweet to find
         :return: The tweet, if available, otherwise None
         """
         for tweet in self.tweets:
-            if tweet.tweet_id == int(tweet_id):
+            if tweet.tweet_id == str(tweet_id):
                 return tweet
         return None
 
     def index(self):
         """
-        Provide a selectable index of months containing tweets.
-
-        :return: A sorted set of indices, the "%Y-%M" (7 chars)
+        :return: A sorted string of date based indices, the "%Y-%M" (7 chars)
             portion of "tweet.timestamp".
         """
         index, magic = set(), 7
@@ -124,15 +69,58 @@ class Archive:
         return ', '.join(sorted(index))
 
 
+class Tweet:
+    """It's all about tweets!"""
+
+    def __init__(self, json_tweet):
+        """
+        :param json_tweet: The tweet portion as extracted from 'tweet.js'
+        """
+        self.tweet_id = json_tweet["id"]
+        self.text = json_tweet["full_text"]
+        self.timestamp = datetime.strftime(datetime.strptime(
+                json_tweet["created_at"], '%a %b %d %H:%M:%S +0000 %Y'
+            ), '%Y-%m-%d %H:%M:%S' )
+        self.in_reply_to_status_id = \
+            json_tweet["in_reply_to_status_id"] \
+                if "in_reply_to_status_id" in json_tweet else None
+
+    def __repr__(self):
+        """String representation: 'YYYY-MM-DD <tweet_id> <text>'"""
+        return '{0} {1} {2}'.format(self.timestamp[:10], self.tweet_id, self.text)
+
+    def is_reply(self):
+        """Tweets with an "in_reply_to_status_id" set are replies."""
+        return self.in_reply_to_status_id is not None
+
+    def is_retweet(self):
+        """Tweets text starting with "RT @" are interpreted as retweets."""
+        return self.text.startswith("RT @")
+
+    def is_tweet(self):
+        """Tweets that are not retweets and not replies are tweets. ;)"""
+        return not self.is_retweet() and not self.is_reply()
+
+
 class Decisions:
     """
-    Make persistent decisions about subjects
+    Make persistent decisions about subjects!
+
+    The related use-case is that we want to store meta information about
+    tweets that we already browsed in the archive. We want to remember
+    tweets that we'd like to keep or to destroy (later).
+
+    The "subject" is a tweet_id and the related "decision" might be
+    either "keep" or "destroy" or anything else.
+
+    Decisions are mapped lazy to files, so *please use valid file names*
+    as possible decision keys.
     """
 
     def __init__(self, work_dir, possible_decisions):
         """
         :param work_dir: The working directory for decision files
-        :param possible_decisions: All decisions
+        :param possible_decisions: All possible decisions
         """
         self.work_dir = work_dir
         self.possible_decisions = possible_decisions
@@ -145,37 +133,30 @@ class Decisions:
             self.decisions[decision] = subjects
 
     def commit(self):
-        """
-        Write the current in memory decisions subjects to their files.
-        """
+        """Write subjects and decisions to files."""
         for _, subjects, filename in self.possible():
             with open(filename, 'w') as file:
                 file.writelines(['{0}\n'.format(subject) for subject in subjects])
 
     def possible(self):
-        """
-        :return: All possible decisions (generator)
-        """
+        """:return: All possible decisions (generator)"""
         for decision in self.possible_decisions:
             yield self.decision(decision)
 
     def decision(self, decision):
         """
-        Tupel for a decision.
-
-            (str decision, set subjects, str filename)
-
         :param decision: The decision
-        :return: Tupel of the given decision, its subjects and related filename
+        :return: Tupel of the given decision, its subjects and related
+            filename (str decision, set subjects, str filename)
         """
-        subjects = self.decisions[decision] if decision in self.decisions else None
-        filename = '/'.join([self.work_dir, decision])
-        return (decision, subjects, filename)
+        return (
+            decision,
+            self.decisions[decision] if decision in self.decisions else None,
+            '/'.join([self.work_dir, decision])
+        )
 
     def decide(self, subject, decision):
         """
-        Add the given subject to the decision.
-
         :param subject: The subject to decide about
         :param decision: The decision
         """
@@ -183,10 +164,8 @@ class Decisions:
 
     def revoke(self, subject, decision):
         """
-        Revoke the given decision.
-
-        :param subject: The subject to revoke from
-        :param decision: The decision
+        :param subject: The subject to revoke the decision from
+        :param decision: The decision to revoke
         """
         if str(subject) in self.decisions[decision]:
             self.decisions[decision].remove(str(subject))
@@ -201,8 +180,6 @@ class Decisions:
 
     def made(self, subject, explicit_decision=None):
         """
-        Was a decision made for the given subject?
-
         :param subject: The subject to check
         :param explicit_decision: Optional, an explicit decision
         :return: True if decision was made on subject, otherwise False
@@ -218,59 +195,67 @@ class Decisions:
 
 
 def clear_screen():
-    """Works on Linux & Mac:"""
-    os.system('clear') # pragma: no cover
+    """Works for me on Linux & Mac:"""
+    os.system('clear')  # pragma: no cover
 
 
 # pylint: disable=too-many-branches,bare-except,missing-docstring
 class UserInterface:
     """
-    Provide simple commandline UI
+    Commandline UI to wire Archive and Decisions classes to an application.
     """
 
-    # For testing/mocking and offline mode:
+    # Declare for testing/mocking and offline mode:
     api = None
 
-    # Possible decisions about tweets:
+    # Declare possible decisions about tweets:
     keep, destroy, destroyed = 'yatat.keep', 'yatat.destroy', 'yatat.destroyed'
 
     def __init__(self, argv):
         """
-        :param argv: sys.argv
+        :param argv: sys.argv as given at command line
         """
         if len(argv) < 2:
-            print('Usage: {0} </path/to/workdir>'.format(argv[0]))
+            print('Usage: $ {0} /path/to/workdir [/path/to/auth.yaml]'.format(argv[0]))
             return
+
         work_dir = argv[1]
         self.archive = Archive(work_dir)
-        self.decisions = Decisions(work_dir, {self.keep, self.destroy, self.destroyed})
+        possible_decisions = {self.keep, self.destroy, self.destroyed}
+        self.decisions = Decisions(work_dir, possible_decisions)
 
         try:
             if len(argv) == 3:
+                # Go online, connect api
                 self.api = tweepyx.API(argv[2], True)
-                self.screen_name = self.api.me().screen_name
-                print('Authenticated as:', self.screen_name)
-                time.sleep(0.75)
+                self.display_username = self.api.me().screen_name
+                print('Authenticated as:', self.display_username)
+                sleep(0.75)
             else:
-                #self.api = None
-                print('Please enter your Twitter username: (to display links)')
-                self.screen_name = input('> ').strip()
+                # Offline, ask for a username
+                print('Please enter your Twitter username: (to display)')
+                self.display_username = input('> ').strip()
 
+            # Start user interaction loop
             self.loop()
 
         except KeyboardInterrupt:
+            # Catch ctrl-c
             print('Aborted.')
         finally:
+            # Always persist decisions
             self.decisions.commit()
             print('Cheers!')
 
     def __repr__(self):
-        inarchive = len(self.archive.tweets)
-        keep = self.decisions.count(self.keep)
-        destroy = self.decisions.count(self.destroy)
-        destroyed = self.decisions.count(self.destroyed)
-        read = keep + destroy + destroyed
-        unread = inarchive - read
+        nr_of_tweets_in_archive = len(self.archive.tweets)
+        nr_of_tweets_to_keep = self.decisions.count(self.keep)
+        nr_of_tweets_to_destroy = self.decisions.count(self.destroy)
+        nr_of_tweets_already_destroyed = self.decisions.count(self.destroyed)
+        nr_of_tweets_read = nr_of_tweets_to_keep \
+                            + nr_of_tweets_to_destroy \
+                            + nr_of_tweets_already_destroyed
+        nr_of_tweets_not_read = nr_of_tweets_in_archive - nr_of_tweets_read
         # pylint: disable=bad-indentation
         return '''
 ==========================================
@@ -278,17 +263,20 @@ Yatat v{0} - @{1}'s tweet archive
 ------------------------------------------
  in archive .: {2}
  unread .....: {3}
- read .......: {4} 
- keeping ....: {5} 
+ read .......: {4}
+ keeping ....: {5}
  to destroy .: {6}
  destroyed ..: {7}
 ------------------------------------------
         '''.strip().format(
-            __version__, self.screen_name,
-            inarchive, unread, read, keep, destroy, destroyed
+            __version__, self.display_username,
+            nr_of_tweets_in_archive, nr_of_tweets_not_read,
+            nr_of_tweets_read, nr_of_tweets_to_keep,
+            nr_of_tweets_to_destroy, nr_of_tweets_already_destroyed
         )
 
     def loop(self):
+        """The application loop."""
         user_did_not_quit = True
         while user_did_not_quit:
             clear_screen()
@@ -335,7 +323,6 @@ Menu:
                 tweet for tweet in self.archive.tweets
                 if tweet.timestamp.startswith(selector)
             ]
-
         else:
             return True
 
@@ -344,59 +331,49 @@ Menu:
         return True
 
     def filter(self, tweets):
-        """
-        :param tweets:
-        """
         if tweets:
             clear_screen()
             print(self)
             print('\nHaving', len(tweets), 'tweets to read.')
-            print('Filter already read tweets? [y|n] Y')
+            print('Filter out already read tweets? [y|n] Y')
             if input('? ').strip().upper() != 'N':
                 for tweet in list(tweets):
                     if self.decisions.made(tweet.tweet_id):
                         tweets.remove(tweet)
-
         if tweets:
             clear_screen()
             print(self)
             print('\nStill', len(tweets), 'tweets...')
-            print('Filter retweets? [y|n] Y')
+            print('Filter out retweets? [y|n] Y')
             if input('? ').strip().upper() != 'N':
                 for tweet in list(tweets):
                     if tweet.is_retweet():
                         tweets.remove(tweet)
-
         if tweets:
             clear_screen()
             print(self)
             print('\nStill', len(tweets), 'tweets...')
-            print('Filter replies? [y|n] N')
+            print('Filter out replies? [y|n] N')
             if input('? ').strip().upper() == 'Y':
                 for tweet in list(tweets):
                     if tweet.is_reply():
                         tweets.remove(tweet)
-
         if tweets:
             clear_screen()
             print(self)
             print('\nStill', len(tweets), 'tweets...')
-            print('Filter tweets? [y|n] N')
+            print('Filter out tweets? [y|n] N')
             if input('? ').strip().upper() == 'Y':
                 for tweet in list(tweets):
                     if tweet.is_tweet():
                         tweets.remove(tweet)
 
     def browse(self, tweets):
-        """
-        :param tweets:
-        """
         clear_screen()
         print(self)
         if tweets:
-            count = len(tweets)
             try:
-                print('\n{0} tweets to read, hit ENTER to start...'.format(count))
+                print('\n{0} tweets to read, hit ENTER to start...'.format(len(tweets)))
                 input()
                 for tweet in tweets:
                     if self.decide(tweet) == 'Q':
@@ -425,8 +402,9 @@ Menu:
 ==========================================
         '''.strip().format(self, self.pretty(tweet)))
         decision = input('\n> ').strip().upper()
-        if decision == 'X':
-            self.decisions.decide(tweet.tweet_id, self.destroy)
+        if decision == 'C':
+            print('DECIDE LATER')
+        elif decision == 'X':
             clear_screen()
             # pylint: disable=anomalous-backslash-in-string
             # pylint: disable=bad-indentation
@@ -438,11 +416,9 @@ Menu:
  | |_| || |___ | |___ | |___   | |  | |___
  |____/ |_____||_____||_____|  |_|  |_____|
             '''.strip().format(self))
-            time.sleep(0.125)
-        elif decision == 'C':
-            print('LATER')
+            self.decisions.decide(tweet.tweet_id, self.destroy)
+            sleep(0.2)
         elif decision != 'Q':
-            self.decisions.decide(tweet.tweet_id, self.keep)
             clear_screen()
             # pylint: disable=anomalous-backslash-in-string
             print(r'''
@@ -453,84 +429,88 @@ Menu:
  | . \ | |___|| |___ |  __/
  |_|\_\|_____||_____||_|
             '''.strip().format(self))
-            time.sleep(0.2)
+            self.decisions.decide(tweet.tweet_id, self.keep)
+            sleep(0.2)
         return decision
 
     def pretty(self, tweet):
         """
-        Provide a pretty string representation of the given tweet.
-
-        Implemented rather here than in Tweet.__repr__ to provide
-        the account's "screen_name" for pretty and click-able URLs.
-        The archive csv doesn't provide that account information.
-
         :param tweet: The tweet
         :return: The pretty string representation of the tweet
         """
-        return '{1} https://twitter.com/{0}/status/{2}{4}{5}\n\n{3}{6}'.format(
-            self.screen_name, tweet.timestamp, tweet.tweet_id, tweet.text,
-            '\n  retweeted: {0}'.format(
-                tweet.retweeted_status_id) if tweet.is_retweet() else '',
-            '\n  replies to: {0}'.format(
-                tweet.in_reply_to_status_id) if tweet.is_reply() else '',
-            self.parent(tweet)
+        return '{4}{5}{1} https://twitter.com/{0}/status/{2}\n{3}'.format(
+            self.display_username,
+            tweet.timestamp, tweet.tweet_id, tweet.text,
+            self.parent(tweet),
+            '-> is a retweet:\n---\n\n' if tweet.is_retweet() else ''
         )
 
     def parent(self, tweet):
-        if tweet is None or tweet.in_reply_to_status_id is None:
+        if not tweet.is_reply():
             return ''
         parent = self.archive.find(tweet.in_reply_to_status_id)
         if parent:
-            return '\n\n__in_reply_to:\n{0}'.format(self.pretty(parent))
-        return ''
+            return '-> is part of a thread:\n{0}\n---\n\n'.format(self.pretty(parent))
+        return '-> is a reply:\n---\n\n'
 
     def destroy_tweets(self):
+        """
+        Destroy all selected tweets if API connection is present
+        :return: True
+        """
         if not self.api:
-            print('Offline, API not connected. Hit ENTER to go back...')
-            input()
-            return True
-        subjects = self.decisions.decision(self.destroy)[1]
-        count = len(subjects)
+            print('API not connected, you are offline!') # pragma: no cover
+            print('Please restart the application in online-mode.') # pragma: no cover
+            print('(See README.md for details)') # pragma: no cover
+            print('Hit ENTER to go back...') # pragma: no cover
+            input() # pragma: no cover
+            return True # pragma: no cover
+
+        tweets_to_destroy = self.decisions.decision(self.destroy)[1]
+        nr_of_tweets_to_destroy = len(tweets_to_destroy)
         clear_screen()
         try:
-            print('{0} tweets marked to DESTROY, hit ENTER to start...'.format(count))
+            print('{0} tweets marked to DESTROY, hit ENTER to start...'
+                  .format(nr_of_tweets_to_destroy))
             input()
-            counter = 0
-            for subject in subjects:
-                if self.decisions.made(subject, self.keep):
+            destroyed_tweets_count = 0
+            for tweet_to_destroy in tweets_to_destroy:
+                if self.decisions.made(tweet_to_destroy, self.keep):
                     continue
-                if self.decisions.made(subject, self.destroyed):
-                    continue
-                print('DESTROYING', count - counter, self.archive.find(subject))
-                time.sleep(1.5)
+                if self.decisions.made(tweet_to_destroy, self.destroyed):
+                    continue # pragma: no cover
+                print(
+                    'DESTROYING',
+                    nr_of_tweets_to_destroy - destroyed_tweets_count,
+                    self.archive.find(tweet_to_destroy)
+                )
+                sleep(1.5)
                 try:
-                    self.api.destroy_status(subject)
-                    self.decisions.decide(subject, self.destroyed)
-                    counter += 1
+                    self.api.destroy_status(tweet_to_destroy)
+                    self.decisions.decide(tweet_to_destroy, self.destroyed)
+                    destroyed_tweets_count += 1
                 # pylint: disable=broad-except
-                except Exception as error: # pragma: no cover
+                except Exception as error:  # pragma: no cover
                     print("Error", error)
-        except KeyboardInterrupt: # pragma: no cover
+        except KeyboardInterrupt:  # pragma: no cover
             print('Aborted.')
 
         print('Cleaning up.')
-        for destroyed in self.decisions.decision(self.destroyed)[1]:
-            self.decisions.revoke(destroyed, self.destroy)
+        for destroyed_tweet in self.decisions.decision(self.destroyed)[1]:
+            self.decisions.revoke(destroyed_tweet, self.destroy)
 
-        time.sleep(0.5)
+        sleep(0.5)
         return True
 
 
 class Oops(Exception):
-    """
-    Problems occur
-    """
+    """Exceptions occur, be sure!"""
 
 
 def main():
-    """Start Yatat application."""
-    UserInterface(sys.argv) # pragma: no cover
+    """Start application"""
+    UserInterface(sys.argv)  # pragma: no cover
 
 
 if __name__ == '__main__':
-    main() # pragma: no cover
+    main()  # pragma: no cover
