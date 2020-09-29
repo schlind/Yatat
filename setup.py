@@ -19,6 +19,7 @@ setup(
         'Intended Audience :: Developers',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'License :: Public Domain',
         'Topic :: Artistic Software',
         'Topic :: Internet',
@@ -30,7 +31,7 @@ setup(
     keywords='twitter archive browser tweet keep delete',
     py_modules=['yatat', 'yatat_test'],
     python_requires='>=3.7, <4',
-    install_requires=['karlsruher>=2.0b16'],
+    install_requires=['karlsruher>=2.1b6'],
     extras_require={
         'test': ['pytest', 'pytest-cov', 'pylint'],
     },

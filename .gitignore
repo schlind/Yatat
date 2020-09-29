@@ -3,6 +3,7 @@ dist/
 htmlcov/
 workdir/
 __pycache__/
+venv/
 
 .coverage
 .eggs/
